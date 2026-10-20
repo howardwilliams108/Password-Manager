@@ -17,7 +17,15 @@ from argon2 import PasswordHasher
 #sha-256 was not used because it is very fast and not suitable for password hashing
 #argon2 is slow and memory-intensive making it more secure
 
+from argon2.low_level import Type, hash_secret_raw
+# hash_secret_raw is a low-level function used to derive a 32-byte AES encrypton key from the master password and a stored random salt.
+# a salt is a random value that is used to enhance the security of password hashing  by adding uniqueness to each password hash.
+# this prevents cybercriminals from using precomputed tables to crack passwords. 
+
+import secrets # this will generate cryptographically secure random values for the salt
+
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from streamlit import connection
 #using cryptography for secure encryption and decryption ensuring that stored credentials are protected
 #hazmat would allow for low-level cryptographic operationss; allows me  to use an implementation
 # rather than  writing AES encryption and hazmat stands for hazardous materials.
@@ -120,7 +128,7 @@ def add_password(website, username, password, key):
     # creates a cursor that will send SQL commands to the database
     
     cursor.execute("INSERT INTO credentials (website, username_encrypted, password_encrypted) VALUES (?, ?, ?)", (website, username, encrypted_password))
-    # this will insert the website, username, and encrypted password into the credentials table
+    # this will insert the website, username, and encrypted password into the credentials table/add information to the database
     
     connection.commit()
     #permanently saving the changes made to the database
@@ -131,4 +139,53 @@ def add_password(website, username, password, key):
     print("Password added successfully!")
 
 # next I am implementing view_passwords() function, which uses SQL select statement to retrieve and display all stored  encrypted credentials from the database
+def view_passwords(username, key):
+    # Connecting to the SQLite database
+    connection = sqlite3.connect(database)
+    cursor = connection.cursor()
     
+    # this will retrieve credentials belonging to the current user; retreive information from the database using the provided username
+    cursor.execute("""SELECT website, username_encrypted, password_encrypted
+                   FROM Credentials where username_encrypted = ?""", (username))
+    
+    credentials = cursor.fetchall() # this command retrieves all rows returned bu the SQL query
+    
+    connection.close()
+    #close the database connection
+    
+    #now checking ig any credentials were found for the user
+    if not credentials:
+        print("No passwords found for the user.")
+        return
+    
+    #Go through each credential or row individually and decrypt the password before displaying it
+    for website, username_encrypted, password_encrypted in credentials:
+        
+        #decrypting the username and password using the decryptdata() function and the provided encryption key:
+        username = decryptdata(username_encrypted, key)
+        password = decryptdata(password_encrypted,key)
+        # above line would convert the encrypted password and username back into readable text
+        
+        print(f"Website: {website}, Username: {username}, Password: {password}")
+        print("-----------------------------")
+        
+    # this function will derive the 32-byte encryption key from the master password
+    
+    def derive_key(master_password, salt):
+        # converting the master password into bytes
+        masterpassword_bytes = master_password.encode('utf-8')
+        
+        # i am now using hash_secret_raw() function to derive the encryption key from the master password and salt
+        key = hash_secret_raw(
+            secret = masterpassword_bytes,
+            salt=salt,
+            timecost=2,
+            memorycost=102400
+            parallelism=8,
+            hash_len=32,
+            type=Type.ID
+        )
+        
+        
+        
+
